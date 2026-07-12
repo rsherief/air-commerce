@@ -1,4 +1,4 @@
-import type { Currency } from '../types'
+import type { MoneyCurrency } from '../types'
 
 const nf0 = new Intl.NumberFormat('en', { maximumFractionDigits: 0 })
 const nf2 = new Intl.NumberFormat('en', { maximumFractionDigits: 2 })
@@ -7,8 +7,8 @@ export function fmtEGP(n: number): string {
   return `${nf0.format(n)} EGP`
 }
 
-export function fmtMoney(n: number, currency: Currency): string {
-  return `${nf2.format(n)} ${currency}`
+export function fmtMoney(n: number, currency: MoneyCurrency): string {
+  return `${(currency === 'EGP' ? nf0 : nf2).format(n)} ${currency}`
 }
 
 export function fmtNum(n: number): string {

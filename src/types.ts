@@ -1,6 +1,16 @@
 export type Currency = 'USD' | 'EUR' | 'GBP' | 'AED'
+export type MoneyCurrency = Currency | 'EGP'
 
 export const CURRENCIES: Currency[] = ['USD', 'EUR', 'GBP', 'AED']
+export const MONEY_CURRENCIES: MoneyCurrency[] = ['EGP', 'USD', 'EUR', 'GBP', 'AED']
+
+/** Which way the goods travel: bring to Egypt to sell, or carry out of Egypt to sell abroad. */
+export type Direction = 'to-egypt' | 'from-egypt'
+
+export const DIRECTION_LABEL: Record<Direction, string> = {
+  'to-egypt': 'Bring to Egypt',
+  'from-egypt': 'Sell abroad',
+}
 
 export type Category =
   | 'perfume'
@@ -11,6 +21,8 @@ export type Category =
   | 'tech'
   | 'fashion'
   | 'collectibles'
+  | 'food'
+  | 'home'
 
 export const CATEGORIES: Category[] = [
   'perfume',
@@ -21,6 +33,8 @@ export const CATEGORIES: Category[] = [
   'tech',
   'fashion',
   'collectibles',
+  'food',
+  'home',
 ]
 
 export interface Product {
@@ -28,24 +42,36 @@ export interface Product {
   name: string
   brand: string
   category: Category
+  direction: Direction
   sourceRegion: string
   sourceStore: string
   buyPrice: number
-  buyCurrency: Currency
-  sellPriceEGP: number
+  buyCurrency: MoneyCurrency
+  sellPrice: number
+  sellCurrency: MoneyCurrency
   weightGrams: number
   notes?: string
 }
 
 export type TripStatus = 'planning' | 'shopping' | 'done'
 
+/** Which legs of the trip carry inventory. */
+export type TripDirection = 'round-trip' | 'outbound' | 'return'
+
+export const TRIP_DIRECTION_LABEL: Record<TripDirection, string> = {
+  'round-trip': 'Round trip — sell both ways',
+  outbound: 'Outbound only — sell abroad',
+  return: 'Return only — bring back to Egypt',
+}
+
 export interface Trip {
   id: string
   destination: string
+  direction: TripDirection
   startDate: string
   endDate: string
   budget: number
-  budgetCurrency: Currency
+  budgetCurrency: MoneyCurrency
   luggageAllowanceKg: number
   status: TripStatus
 }
@@ -85,8 +111,9 @@ export interface Order {
   customerId: string
   productId: string
   qty: number
-  agreedPriceEGP: number
-  depositEGP: number
+  agreedPrice: number
+  deposit: number
+  currency: MoneyCurrency
   paymentMethod: PaymentMethod
   status: OrderStatus
   tripId?: string

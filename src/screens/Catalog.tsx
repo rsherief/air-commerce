@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
-import type { Category, Currency, Product } from '../types'
-import { CATEGORIES, CURRENCIES } from '../types'
-import { productMetrics, suggestedSellEGP } from '../lib/margin'
-import { fmtEGP, fmtMoney, fmtNum, fmtPct, uid } from '../lib/format'
+import type { Category, Direction, MoneyCurrency, Product } from '../types'
+import { CATEGORIES, DIRECTION_LABEL, MONEY_CURRENCIES } from '../types'
+import { productMetrics, suggestedSell } from '../lib/margin'
+import { fmtMoney, fmtNum, fmtPct, uid } from '../lib/format'
 import { Button, Card, Chip, Empty, Fab, Field, Modal, inputCls } from '../components/ui'
 
 export function marginTone(pct: number): 'green' | 'amber' | 'red' {
@@ -12,11 +12,14 @@ export function marginTone(pct: number): 'green' | 'amber' | 'red' {
   return 'red'
 }
 
+export const directionBadge = (d: Direction) => (d === 'from-egypt' ? '🇪🇬 →' : '→ 🇪🇬')
+
 export default function Catalog() {
   const products = useStore((s) => s.products)
   const fx = useStore((s) => s.fx)
   const settings = useStore((s) => s.settings)
   const [search, setSearch] = useState('')
+  const [direction, setDirection] = useState<Direction | 'all'>('all')
   const [category, setCategory] = useState<Category | 'all'>('all')
   const [editing, setEditing] = useState<Product | null>(null)
   const [creating, setCreating] = useState(false)
@@ -24,6 +27,7 @@ export default function Catalog() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return products
+      .filter((p) => direction === 'all' || p.direction === direction)
       .filter((p) => category === 'all' || p.category === category)
       .filter(
         (p) =>
@@ -35,7 +39,7 @@ export default function Catalog() {
       )
       .map((p) => ({ p, m: productMetrics(p, fx, settings) }))
       .sort((a, b) => b.m.profitPerKg - a.m.profitPerKg)
-  }, [products, category, search, fx, settings])
+  }, [products, direction, category, search, fx, settings])
 
   return (
     <div>
@@ -49,6 +53,25 @@ export default function Catalog() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
+      <div className="mb-2 flex rounded-lg bg-slate-800 p-0.5 text-xs font-medium">
+        {(
+          [
+            ['all', 'All'],
+            ['from-egypt', '🇪🇬 → Sell abroad'],
+            ['to-egypt', '→ 🇪🇬 Bring home'],
+          ] as const
+        ).map(([d, label]) => (
+          <button
+            key={d}
+            onClick={() => setDirection(d)}
+            className={`flex-1 rounded-md py-1.5 ${
+              direction === d ? 'bg-sky-600 text-white' : 'text-slate-400'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
         {(['all', ...CATEGORIES] as const).map((c) => (
           <button
@@ -70,7 +93,10 @@ export default function Catalog() {
           <Card key={p.id} onClick={() => setEditing(p)}>
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">{p.name}</div>
+                <div className="truncate text-sm font-semibold">
+                  <span className="mr-1 text-xs">{directionBadge(p.direction)}</span>
+                  {p.name}
+                </div>
                 <div className="text-xs text-slate-400">
                   {p.brand} · {p.sourceStore} ({p.sourceRegion})
                 </div>
@@ -82,7 +108,7 @@ export default function Catalog() {
                 Buy <b>{fmtMoney(p.buyPrice, p.buyCurrency)}</b>
               </span>
               <span>
-                Sell <b>{fmtEGP(p.sellPriceEGP)}</b>
+                Sell <b>{fmtMoney(p.sellPrice, p.sellCurrency)}</b>
               </span>
               <span className="text-emerald-400">
                 +{fmtNum(m.profit)} EGP · {fmtNum(m.profitPerKg)}/kg
@@ -125,18 +151,19 @@ function ProductForm({
     name: '',
     brand: '',
     category: 'skincare',
+    direction: 'to-egypt',
     sourceRegion: '',
     sourceStore: '',
     buyPrice: 0,
     buyCurrency: 'EUR',
-    sellPriceEGP: 0,
+    sellPrice: 0,
+    sellCurrency: 'EGP',
     weightGrams: 0,
     notes: '',
   }
   const [form, setForm] = useState<Product>(blank)
   const [loadedFor, setLoadedFor] = useState<string | null>(null)
 
-  // Sync form when the modal opens for a different product (or for create)
   const key = product?.id ?? (open ? 'new' : null)
   if (open && key !== loadedFor) {
     setForm(product ?? blank)
@@ -146,15 +173,46 @@ function ProductForm({
 
   const set = <K extends keyof Product>(k: K, v: Product[K]) => setForm((f) => ({ ...f, [k]: v }))
 
+  const setDirection = (d: Product['direction']) =>
+    setForm((f) => ({
+      ...f,
+      direction: d,
+      // sensible currency defaults when switching direction
+      buyCurrency: d === 'from-egypt' ? 'EGP' : f.buyCurrency === 'EGP' ? 'EUR' : f.buyCurrency,
+      sellCurrency: d === 'from-egypt' ? (f.sellCurrency === 'EGP' ? 'GBP' : f.sellCurrency) : 'EGP',
+      sourceRegion: d === 'from-egypt' ? 'Egypt' : f.sourceRegion === 'Egypt' ? '' : f.sourceRegion,
+    }))
+
   const save = () => {
-    if (!form.name.trim() || form.buyPrice <= 0 || form.sellPriceEGP <= 0) return
+    if (!form.name.trim() || form.buyPrice <= 0 || form.sellPrice <= 0) return
     upsertProduct({ ...form, id: form.id || uid() })
     onClose()
   }
 
+  const suggestion =
+    form.buyPrice > 0
+      ? suggestedSell(form.buyPrice, form.buyCurrency, form.sellCurrency, fx, settings)
+      : 0
+
   return (
     <Modal open={open} onClose={onClose} title={product ? 'Edit product' : 'New product'}>
       <div className="space-y-3">
+        <Field label="Direction">
+          <div className="flex rounded-lg bg-slate-800 p-0.5 text-xs font-medium">
+            {(['from-egypt', 'to-egypt'] as const).map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDirection(d)}
+                className={`flex-1 rounded-md py-2 ${
+                  form.direction === d ? 'bg-sky-600 text-white' : 'text-slate-400'
+                }`}
+              >
+                {directionBadge(d)} {DIRECTION_LABEL[d]}
+              </button>
+            ))}
+          </div>
+        </Field>
         <Field label="Product name">
           <input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} />
         </Field>
@@ -177,10 +235,10 @@ function ProductForm({
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Source region">
+          <Field label={form.direction === 'from-egypt' ? 'Buy in (Egypt)' : 'Source region'}>
             <input
               className={inputCls}
-              placeholder="France, Dubai…"
+              placeholder={form.direction === 'from-egypt' ? 'Egypt' : 'France, Dubai…'}
               value={form.sourceRegion}
               onChange={(e) => set('sourceRegion', e.target.value)}
             />
@@ -188,7 +246,7 @@ function ProductForm({
           <Field label="Store">
             <input
               className={inputCls}
-              placeholder="City Pharma…"
+              placeholder={form.direction === 'from-egypt' ? 'Local market…' : 'City Pharma…'}
               value={form.sourceStore}
               onChange={(e) => set('sourceStore', e.target.value)}
             />
@@ -205,13 +263,13 @@ function ProductForm({
               onChange={(e) => set('buyPrice', Number(e.target.value))}
             />
           </Field>
-          <Field label="Currency">
+          <Field label="Buy currency">
             <select
               className={inputCls}
               value={form.buyCurrency}
-              onChange={(e) => set('buyCurrency', e.target.value as Currency)}
+              onChange={(e) => set('buyCurrency', e.target.value as MoneyCurrency)}
             >
-              {CURRENCIES.map((c) => (
+              {MONEY_CURRENCIES.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
@@ -220,38 +278,46 @@ function ProductForm({
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Sell price (EGP)">
+          <Field label="Sell price">
             <input
               className={inputCls}
               type="number"
               inputMode="decimal"
               min={0}
-              value={form.sellPriceEGP || ''}
-              onChange={(e) => set('sellPriceEGP', Number(e.target.value))}
+              value={form.sellPrice || ''}
+              onChange={(e) => set('sellPrice', Number(e.target.value))}
             />
           </Field>
-          <Field label="Weight (grams)">
-            <input
+          <Field label="Sell currency">
+            <select
               className={inputCls}
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={form.weightGrams || ''}
-              onChange={(e) => set('weightGrams', Number(e.target.value))}
-            />
+              value={form.sellCurrency}
+              onChange={(e) => set('sellCurrency', e.target.value as MoneyCurrency)}
+            >
+              {MONEY_CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </Field>
         </div>
-        {form.buyPrice > 0 && (
-          <button
-            className="text-xs text-sky-400"
-            onClick={() =>
-              set('sellPriceEGP', suggestedSellEGP(form.buyPrice, form.buyCurrency, fx, settings))
-            }
-          >
+        {suggestion > 0 && (
+          <button className="text-xs text-sky-400" onClick={() => set('sellPrice', suggestion)}>
             Suggest sell price at +{settings.defaultMarkupPct}% markup →{' '}
-            {fmtEGP(suggestedSellEGP(form.buyPrice, form.buyCurrency, fx, settings))}
+            {fmtMoney(suggestion, form.sellCurrency)}
           </button>
         )}
+        <Field label="Weight (grams)">
+          <input
+            className={inputCls}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            value={form.weightGrams || ''}
+            onChange={(e) => set('weightGrams', Number(e.target.value))}
+          />
+        </Field>
         <Field label="Notes">
           <input
             className={inputCls}

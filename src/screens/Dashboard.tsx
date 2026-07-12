@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useStore } from '../store'
 import { CURRENCIES } from '../types'
 import { fetchRates, rateAge } from '../lib/fx'
+import { effectiveRate } from '../lib/margin'
 import { tripTotals } from '../lib/trip'
 import { fmtEGP, fmtKg, fmtNum } from '../lib/format'
 import { orderBalance } from './Orders'
@@ -24,9 +25,12 @@ export default function Dashboard({ goTo }: { goTo: (t: Tab) => void }) {
       )
     : null
 
+  const toEGP = (amount: number, currency: Parameters<typeof effectiveRate>[0]) =>
+    amount * effectiveRate(currency, fx, settings, 'revenue')
+
   const openOrders = orders.filter((o) => o.status !== 'settled')
-  const outstanding = openOrders.reduce((sum, o) => sum + orderBalance(o), 0)
-  const depositsHeld = openOrders.reduce((sum, o) => sum + o.depositEGP, 0)
+  const outstanding = openOrders.reduce((sum, o) => sum + toEGP(orderBalance(o), o.currency), 0)
+  const depositsHeld = openOrders.reduce((sum, o) => sum + toEGP(o.deposit, o.currency), 0)
 
   const refresh = async () => {
     setRefreshing(true)
@@ -38,7 +42,7 @@ export default function Dashboard({ goTo }: { goTo: (t: Tab) => void }) {
   return (
     <div>
       <h1 className="mb-1 text-xl font-bold">Air Commerce</h1>
-      <p className="mb-4 text-xs text-slate-500">Buy smart abroad · sell smart at home</p>
+      <p className="mb-4 text-xs text-slate-500">Trade smart in both directions ✈️</p>
 
       {/* FX card */}
       <Card className="mb-3">
@@ -63,7 +67,7 @@ export default function Dashboard({ goTo }: { goTo: (t: Tab) => void }) {
           })}
         </div>
         <div className="mt-2 text-[11px] text-slate-500">
-          {rateAge(fx.fetchedAt)} · +{settings.fxBufferPct}% safety buffer applied to margins
+          {rateAge(fx.fetchedAt)} · ±{settings.fxBufferPct}% safety buffer applied to margins
         </div>
       </Card>
 
@@ -71,17 +75,21 @@ export default function Dashboard({ goTo }: { goTo: (t: Tab) => void }) {
       {activeTrip && activeTotals ? (
         <Card className="mb-3" onClick={() => goTo('trips')}>
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-semibold">✈️ {activeTrip.destination}</span>
+            <span className="text-sm font-semibold">✈️ Cairo ⇄ {activeTrip.destination}</span>
             <Chip tone={activeTrip.status === 'shopping' ? 'amber' : 'sky'}>{activeTrip.status}</Chip>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="grid grid-cols-4 gap-2 text-center text-xs">
             <div>
               <div className="text-slate-400">Cost</div>
               <div className="font-semibold">{fmtNum(activeTotals.costEGP)}</div>
             </div>
             <div>
-              <div className="text-slate-400">Weight</div>
-              <div className="font-semibold">{fmtKg(activeTotals.weightKg)}</div>
+              <div className="text-slate-400">Out</div>
+              <div className="font-semibold">{fmtKg(activeTotals.weightOutKg)}</div>
+            </div>
+            <div>
+              <div className="text-slate-400">Back</div>
+              <div className="font-semibold">{fmtKg(activeTotals.weightBackKg)}</div>
             </div>
             <div>
               <div className="text-slate-400">Profit</div>
@@ -106,7 +114,8 @@ export default function Dashboard({ goTo }: { goTo: (t: Tab) => void }) {
 
       <p className="mt-5 text-[11px] leading-relaxed text-slate-600">
         Reminder from your research: pre-sell with ~50% deposits, keep phones out of inventory
-        (IMEI tax), and verify customs rules quarterly. Seeded catalog prices are estimates.
+        (IMEI tax), verify customs rules quarterly — including food/agricultural import rules at
+        your destination for goods carried out of Egypt. Seeded catalog prices are estimates.
       </p>
     </div>
   )

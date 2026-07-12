@@ -1,8 +1,15 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
-import type { Currency, Trip, TripItem, TripStatus } from '../types'
-import { CURRENCIES } from '../types'
-import { landedEGP, productMetrics } from '../lib/margin'
+import type {
+  Direction,
+  MoneyCurrency,
+  Trip,
+  TripDirection,
+  TripItem,
+  TripStatus,
+} from '../types'
+import { MONEY_CURRENCIES, TRIP_DIRECTION_LABEL } from '../types'
+import { landedEGP, productMetrics, revenueEGP } from '../lib/margin'
 import { tripTotals } from '../lib/trip'
 import { fmtDate, fmtEGP, fmtKg, fmtMoney, fmtNum, uid } from '../lib/format'
 import { Button, Card, Chip, Empty, Fab, Field, Modal, ProgressBar, Stat, inputCls } from '../components/ui'
@@ -19,6 +26,12 @@ const nextStatus: Record<TripStatus, TripStatus> = {
   done: 'planning',
 }
 
+const tripDirIcon: Record<TripDirection, string> = {
+  'round-trip': '⇄',
+  outbound: '→',
+  return: '←',
+}
+
 export default function Trips() {
   const trips = useStore((s) => s.trips)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -31,7 +44,7 @@ export default function Trips() {
     <div>
       <h1 className="mb-3 text-xl font-bold">Trips</h1>
       {trips.length === 0 && (
-        <Empty text="No trips yet. Create one for your next flight and build its shopping list." />
+        <Empty text="No trips yet. Create one for your next flight and build its shopping lists." />
       )}
       <div className="space-y-2">
         {[...trips].reverse().map((t) => (
@@ -51,7 +64,9 @@ function TripCard({ trip, onOpen }: { trip: Trip; onOpen: () => void }) {
   return (
     <Card onClick={onOpen}>
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold">✈️ {trip.destination}</div>
+        <div className="text-sm font-semibold">
+          ✈️ Cairo {tripDirIcon[trip.direction]} {trip.destination}
+        </div>
         <Chip tone={statusTone[trip.status]}>{trip.status}</Chip>
       </div>
       <div className="mt-1 text-xs text-slate-400">
@@ -69,17 +84,31 @@ function TripDetail({ trip, onBack }: { trip: Trip; onBack: () => void }) {
   const { tripItems, products, orders, customers, fx, settings } = useStore()
   const upsertTrip = useStore((s) => s.upsertTrip)
   const deleteTrip = useStore((s) => s.deleteTrip)
-  const upsertTripItem = useStore((s) => s.upsertTripItem)
-  const deleteTripItem = useStore((s) => s.deleteTripItem)
-  const [picking, setPicking] = useState(false)
+  const [pickingFor, setPickingFor] = useState<Direction | null>(null)
   const [editingTrip, setEditingTrip] = useState(false)
 
   const items = tripItems.filter((i) => i.tripId === trip.id)
   const totals = tripTotals(trip, items, products, fx, settings)
   const linkedOrders = orders.filter((o) => o.tripId === trip.id)
   const budgetPct = totals.budgetEGP > 0 ? (totals.costEGP / totals.budgetEGP) * 100 : 0
-  const weightPct =
-    trip.luggageAllowanceKg > 0 ? (totals.weightKg / trip.luggageAllowanceKg) * 100 : 0
+  const outPct = trip.luggageAllowanceKg > 0 ? (totals.weightOutKg / trip.luggageAllowanceKg) * 100 : 0
+  const backPct = trip.luggageAllowanceKg > 0 ? (totals.weightBackKg / trip.luggageAllowanceKg) * 100 : 0
+
+  const legs: { direction: Direction; title: string; weightKg: number; pct: number }[] = []
+  if (trip.direction !== 'return')
+    legs.push({
+      direction: 'from-egypt',
+      title: `🇪🇬 → Carry out — sell in ${trip.destination}`,
+      weightKg: totals.weightOutKg,
+      pct: outPct,
+    })
+  if (trip.direction !== 'outbound')
+    legs.push({
+      direction: 'to-egypt',
+      title: '→ 🇪🇬 Bring back — sell in Egypt',
+      weightKg: totals.weightBackKg,
+      pct: backPct,
+    })
 
   return (
     <div>
@@ -87,7 +116,9 @@ function TripDetail({ trip, onBack }: { trip: Trip; onBack: () => void }) {
         ← All trips
       </button>
       <div className="mb-1 flex items-center justify-between">
-        <h1 className="text-xl font-bold">✈️ {trip.destination}</h1>
+        <h1 className="text-xl font-bold">
+          ✈️ Cairo {tripDirIcon[trip.direction]} {trip.destination}
+        </h1>
         <button onClick={() => upsertTrip({ ...trip, status: nextStatus[trip.status] })}>
           <Chip tone={statusTone[trip.status]}>{trip.status} ▸</Chip>
         </button>
@@ -107,89 +138,46 @@ function TripDetail({ trip, onBack }: { trip: Trip; onBack: () => void }) {
           tone={budgetPct > 100 ? 'red' : 'slate'}
         />
         <Stat
-          label="Weight"
-          value={fmtKg(totals.weightKg)}
-          sub={`of ${trip.luggageAllowanceKg} kg`}
-          tone={weightPct > 100 ? 'red' : 'slate'}
+          label={`Weight / ${trip.luggageAllowanceKg} kg per leg`}
+          value={trip.direction === 'return' ? fmtKg(totals.weightBackKg) : fmtKg(totals.weightOutKg)}
+          sub={
+            trip.direction === 'round-trip'
+              ? `out · back ${fmtKg(totals.weightBackKg)}`
+              : trip.direction === 'outbound'
+                ? 'carried out'
+                : 'brought back'
+          }
+          tone={Math.max(outPct, backPct) > 100 ? 'red' : 'slate'}
         />
         <Stat label="Projected profit" value={fmtEGP(totals.profitEGP)} tone="green" />
       </div>
-      <div className="mb-1">
+      <div className="mb-4">
         <ProgressBar pct={budgetPct} />
       </div>
-      <div className="mb-4">
-        <ProgressBar pct={weightPct} danger={weightPct > 100} />
-      </div>
 
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-300">Shopping list</h2>
-        <Button variant="secondary" onClick={() => setPicking(true)} className="!py-1 text-xs">
-          + Add products
-        </Button>
-      </div>
-      {items.length === 0 && <Empty text="No items yet — add products from the catalog." />}
-      <div className="space-y-2">
-        {items.map((it) => {
-          const p = products.find((x) => x.id === it.productId)
-          if (!p) return null
-          const landed = landedEGP(p, fx, settings, it.actualBuyPrice)
-          return (
-            <Card key={it.id}>
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={it.purchased}
-                  onChange={(e) => upsertTripItem({ ...it, purchased: e.target.checked })}
-                  className="h-5 w-5 accent-sky-500"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className={`truncate text-sm ${it.purchased ? 'line-through text-slate-500' : ''}`}>
-                    {p.name}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {fmtMoney(it.actualBuyPrice ?? p.buyPrice, p.buyCurrency)} → {fmtEGP(landed)} ·{' '}
-                    <span className="text-emerald-400">+{fmtNum((p.sellPriceEGP - landed) * it.qty)} EGP</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    className="h-7 w-7 rounded bg-slate-700 text-slate-200"
-                    onClick={() =>
-                      it.qty > 1 ? upsertTripItem({ ...it, qty: it.qty - 1 }) : deleteTripItem(it.id)
-                    }
-                  >
-                    −
-                  </button>
-                  <span className="w-6 text-center text-sm">{it.qty}</span>
-                  <button
-                    className="h-7 w-7 rounded bg-slate-700 text-slate-200"
-                    onClick={() => upsertTripItem({ ...it, qty: it.qty + 1 })}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-              <div className="mt-2 flex items-center gap-2 text-xs">
-                <span className="text-slate-500">Actual price:</span>
-                <input
-                  className="w-24 rounded bg-slate-900 border border-slate-700 px-2 py-1 text-xs"
-                  type="number"
-                  inputMode="decimal"
-                  placeholder={String(p.buyPrice)}
-                  value={it.actualBuyPrice ?? ''}
-                  onChange={(e) =>
-                    upsertTripItem({
-                      ...it,
-                      actualBuyPrice: e.target.value === '' ? undefined : Number(e.target.value),
-                    })
-                  }
-                />
-                <span className="text-slate-500">{p.buyCurrency}</span>
-              </div>
-            </Card>
-          )
-        })}
-      </div>
+      {legs.map((leg) => (
+        <div key={leg.direction} className="mb-5">
+          <div className="mb-1 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-300">{leg.title}</h2>
+            <Button
+              variant="secondary"
+              onClick={() => setPickingFor(leg.direction)}
+              className="!py-1 text-xs"
+            >
+              + Add
+            </Button>
+          </div>
+          <div className="mb-2 flex items-center gap-2">
+            <div className="flex-1">
+              <ProgressBar pct={leg.pct} danger={leg.pct > 100} />
+            </div>
+            <span className={`text-[11px] ${leg.pct > 100 ? 'text-rose-400' : 'text-slate-500'}`}>
+              {fmtKg(leg.weightKg)} / {trip.luggageAllowanceKg} kg
+            </span>
+          </div>
+          <LegItems tripDirection={leg.direction} items={items} />
+        </div>
+      ))}
 
       {linkedOrders.length > 0 && (
         <>
@@ -217,7 +205,7 @@ function TripDetail({ trip, onBack }: { trip: Trip; onBack: () => void }) {
         <Button
           variant="danger"
           onClick={() => {
-            if (confirm('Delete this trip and its shopping list?')) {
+            if (confirm('Delete this trip and its shopping lists?')) {
               deleteTrip(trip.id)
               onBack()
             }
@@ -228,12 +216,94 @@ function TripDetail({ trip, onBack }: { trip: Trip; onBack: () => void }) {
       </div>
 
       <ProductPicker
-        open={picking}
-        onClose={() => setPicking(false)}
+        open={pickingFor !== null}
+        onClose={() => setPickingFor(null)}
         tripId={trip.id}
+        direction={pickingFor ?? 'to-egypt'}
+        destination={trip.destination}
         items={items}
       />
       <TripForm open={editingTrip} trip={trip} onClose={() => setEditingTrip(false)} />
+    </div>
+  )
+}
+
+function LegItems({ tripDirection, items }: { tripDirection: Direction; items: TripItem[] }) {
+  const { products, fx, settings } = useStore()
+  const upsertTripItem = useStore((s) => s.upsertTripItem)
+  const deleteTripItem = useStore((s) => s.deleteTripItem)
+
+  const legItems = items.filter(
+    (it) => products.find((p) => p.id === it.productId)?.direction === tripDirection,
+  )
+
+  if (legItems.length === 0)
+    return <Empty text="Nothing on this leg yet — add products from the catalog." />
+
+  return (
+    <div className="space-y-2">
+      {legItems.map((it) => {
+        const p = products.find((x) => x.id === it.productId)
+        if (!p) return null
+        const landed = landedEGP(p, fx, settings, it.actualBuyPrice)
+        const profit = (revenueEGP(p, fx, settings) - landed) * it.qty
+        return (
+          <Card key={it.id}>
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={it.purchased}
+                onChange={(e) => upsertTripItem({ ...it, purchased: e.target.checked })}
+                className="h-5 w-5 accent-sky-500"
+              />
+              <div className="min-w-0 flex-1">
+                <div className={`truncate text-sm ${it.purchased ? 'line-through text-slate-500' : ''}`}>
+                  {p.name}
+                </div>
+                <div className="text-xs text-slate-400">
+                  {fmtMoney(it.actualBuyPrice ?? p.buyPrice, p.buyCurrency)} →{' '}
+                  {fmtMoney(p.sellPrice, p.sellCurrency)} ·{' '}
+                  <span className="text-emerald-400">+{fmtNum(profit)} EGP</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  className="h-7 w-7 rounded bg-slate-700 text-slate-200"
+                  onClick={() =>
+                    it.qty > 1 ? upsertTripItem({ ...it, qty: it.qty - 1 }) : deleteTripItem(it.id)
+                  }
+                >
+                  −
+                </button>
+                <span className="w-6 text-center text-sm">{it.qty}</span>
+                <button
+                  className="h-7 w-7 rounded bg-slate-700 text-slate-200"
+                  onClick={() => upsertTripItem({ ...it, qty: it.qty + 1 })}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <div className="mt-2 flex items-center gap-2 text-xs">
+              <span className="text-slate-500">Actual price:</span>
+              <input
+                className="w-24 rounded bg-slate-900 border border-slate-700 px-2 py-1 text-xs"
+                type="number"
+                inputMode="decimal"
+                placeholder={String(p.buyPrice)}
+                value={it.actualBuyPrice ?? ''}
+                onChange={(e) =>
+                  upsertTripItem({
+                    ...it,
+                    actualBuyPrice: e.target.value === '' ? undefined : Number(e.target.value),
+                  })
+                }
+              />
+              <span className="text-slate-500">{p.buyCurrency}</span>
+            </div>
+          </Card>
+        )
+      })}
     </div>
   )
 }
@@ -242,11 +312,15 @@ function ProductPicker({
   open,
   onClose,
   tripId,
+  direction,
+  destination,
   items,
 }: {
   open: boolean
   onClose: () => void
   tripId: string
+  direction: Direction
+  destination: string
   items: TripItem[]
 }) {
   const { products, fx, settings } = useStore()
@@ -256,10 +330,11 @@ function ProductPicker({
   const ranked = useMemo(() => {
     const q = search.toLowerCase()
     return products
+      .filter((p) => p.direction === direction)
       .filter((p) => !q || p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q))
       .map((p) => ({ p, m: productMetrics(p, fx, settings) }))
       .sort((a, b) => b.m.profitPerKg - a.m.profitPerKg)
-  }, [products, search, fx, settings])
+  }, [products, direction, search, fx, settings])
 
   const add = (productId: string) => {
     const existing = items.find((i) => i.productId === productId)
@@ -267,14 +342,20 @@ function ProductPicker({
     else upsertTripItem({ id: uid(), tripId, productId, qty: 1, purchased: false })
   }
 
+  const title =
+    direction === 'from-egypt' ? `Products to sell in ${destination}` : 'Products to bring back'
+
   return (
-    <Modal open={open} onClose={onClose} title="Add products (best profit/kg first)">
+    <Modal open={open} onClose={onClose} title={title}>
       <input
         className={`${inputCls} mb-3`}
         placeholder="Search…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
+      {ranked.length === 0 && (
+        <Empty text="No products in this direction yet — add some in the Catalog tab." />
+      )}
       <div className="space-y-2">
         {ranked.map(({ p, m }) => {
           const inList = items.find((i) => i.productId === p.id)
@@ -304,6 +385,7 @@ function TripForm({ open, trip, onClose }: { open: boolean; trip: Trip | null; o
   const blank: Trip = {
     id: '',
     destination: '',
+    direction: 'round-trip',
     startDate: today,
     endDate: today,
     budget: 1000,
@@ -332,13 +414,26 @@ function TripForm({ open, trip, onClose }: { open: boolean; trip: Trip | null; o
   return (
     <Modal open={open} onClose={onClose} title={trip ? 'Edit trip' : 'New trip'}>
       <div className="space-y-3">
-        <Field label="Destination">
+        <Field label="Destination (from Cairo)">
           <input
             className={inputCls}
-            placeholder="Dubai, Paris, London…"
+            placeholder="London, Dubai, Paris…"
             value={form.destination}
             onChange={(e) => set('destination', e.target.value)}
           />
+        </Field>
+        <Field label="Selling direction">
+          <select
+            className={inputCls}
+            value={form.direction}
+            onChange={(e) => set('direction', e.target.value as TripDirection)}
+          >
+            {(Object.keys(TRIP_DIRECTION_LABEL) as TripDirection[]).map((d) => (
+              <option key={d} value={d}>
+                {TRIP_DIRECTION_LABEL[d]}
+              </option>
+            ))}
+          </select>
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Start date">
@@ -373,9 +468,9 @@ function TripForm({ open, trip, onClose }: { open: boolean; trip: Trip | null; o
             <select
               className={inputCls}
               value={form.budgetCurrency}
-              onChange={(e) => set('budgetCurrency', e.target.value as Currency)}
+              onChange={(e) => set('budgetCurrency', e.target.value as MoneyCurrency)}
             >
-              {CURRENCIES.map((c) => (
+              {MONEY_CURRENCIES.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
@@ -383,7 +478,7 @@ function TripForm({ open, trip, onClose }: { open: boolean; trip: Trip | null; o
             </select>
           </Field>
         </div>
-        <Field label="Spare luggage allowance (kg)">
+        <Field label="Spare luggage allowance per leg (kg)">
           <input
             className={inputCls}
             type="number"

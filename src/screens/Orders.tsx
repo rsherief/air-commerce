@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useStore } from '../store'
-import type { Order, OrderStatus, PaymentMethod } from '../types'
-import { ORDER_STATUSES, PAYMENT_METHODS } from '../types'
-import { fmtEGP, uid } from '../lib/format'
+import type { MoneyCurrency, Order, OrderStatus, PaymentMethod } from '../types'
+import { MONEY_CURRENCIES, ORDER_STATUSES, PAYMENT_METHODS } from '../types'
+import { fmtMoney, uid } from '../lib/format'
 import { Button, Card, Chip, Empty, Fab, Field, Modal, inputCls } from '../components/ui'
 
 const statusTone: Record<OrderStatus, 'slate' | 'amber' | 'sky' | 'violet' | 'green'> = {
@@ -13,8 +13,8 @@ const statusTone: Record<OrderStatus, 'slate' | 'amber' | 'sky' | 'violet' | 'gr
   settled: 'green',
 }
 
-export const orderTotal = (o: Order) => o.agreedPriceEGP * o.qty
-export const orderBalance = (o: Order) => (o.status === 'settled' ? 0 : orderTotal(o) - o.depositEGP)
+export const orderTotal = (o: Order) => o.agreedPrice * o.qty
+export const orderBalance = (o: Order) => (o.status === 'settled' ? 0 : orderTotal(o) - o.deposit)
 
 export default function Orders() {
   const { orders, products, customers } = useStore()
@@ -37,9 +37,9 @@ export default function Orders() {
     const text = [
       `Order — ${c?.name ?? 'customer'}`,
       `${p?.name ?? 'item'} ×${o.qty}`,
-      `Total: ${fmtEGP(orderTotal(o))}`,
-      `Deposit: ${fmtEGP(o.depositEGP)} (${o.paymentMethod})`,
-      `Balance: ${fmtEGP(orderBalance(o))}`,
+      `Total: ${fmtMoney(orderTotal(o), o.currency)}`,
+      `Deposit: ${fmtMoney(o.deposit, o.currency)} (${o.paymentMethod})`,
+      `Balance: ${fmtMoney(orderBalance(o), o.currency)}`,
       `Status: ${o.status.replace('-', ' ')}`,
     ].join('\n')
     try {
@@ -63,9 +63,9 @@ export default function Orders() {
               {c?.name ?? 'Unknown'} · {p?.name ?? 'Deleted product'} ×{o.qty}
             </div>
             <div className="mt-0.5 text-xs text-slate-400">
-              Total {fmtEGP(orderTotal(o))} · Deposit {fmtEGP(o.depositEGP)} ·{' '}
+              Total {fmtMoney(orderTotal(o), o.currency)} · Deposit {fmtMoney(o.deposit, o.currency)} ·{' '}
               <span className={orderBalance(o) > 0 ? 'text-amber-400' : 'text-emerald-400'}>
-                Balance {fmtEGP(orderBalance(o))}
+                Balance {fmtMoney(orderBalance(o), o.currency)}
               </span>
             </div>
           </div>
@@ -130,8 +130,9 @@ function OrderForm({
     customerId: '',
     productId: '',
     qty: 1,
-    agreedPriceEGP: 0,
-    depositEGP: 0,
+    agreedPrice: 0,
+    deposit: 0,
+    currency: 'EGP',
     paymentMethod: 'Instapay',
     status: 'requested',
     tripId: undefined,
@@ -154,7 +155,7 @@ function OrderForm({
   const isNewCustomer = form.customerId === '__new__'
 
   const save = () => {
-    if (!form.productId || form.agreedPriceEGP <= 0) return
+    if (!form.productId || form.agreedPrice <= 0) return
     let customerId = form.customerId
     if (isNewCustomer) {
       if (!newCustomer.name.trim()) return
@@ -167,7 +168,10 @@ function OrderForm({
   }
 
   const selectedProduct = products.find((p) => p.id === form.productId)
-  const halfDeposit = Math.round((form.agreedPriceEGP * form.qty) / 2)
+  const halfDeposit =
+    form.currency === 'EGP'
+      ? Math.round((form.agreedPrice * form.qty) / 2)
+      : Math.round((form.agreedPrice * form.qty) / 2 + Number.EPSILON)
 
   return (
     <Modal open={open} onClose={onClose} title={order ? 'Edit order' : 'New pre-order'}>
@@ -215,7 +219,8 @@ function OrderForm({
               setForm((f) => ({
                 ...f,
                 productId: e.target.value,
-                agreedPriceEGP: f.agreedPriceEGP || p?.sellPriceEGP || 0,
+                agreedPrice: f.agreedPrice || p?.sellPrice || 0,
+                currency: p?.sellCurrency ?? f.currency,
               }))
             }}
           >
@@ -229,7 +234,7 @@ function OrderForm({
               ))}
           </select>
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <Field label="Quantity">
             <input
               className={inputCls}
@@ -240,31 +245,44 @@ function OrderForm({
               onChange={(e) => set('qty', Math.max(1, Number(e.target.value)))}
             />
           </Field>
-          <Field label="Agreed price / unit (EGP)">
+          <Field label="Price / unit">
             <input
               className={inputCls}
               type="number"
               inputMode="decimal"
               min={0}
-              value={form.agreedPriceEGP || ''}
-              onChange={(e) => set('agreedPriceEGP', Number(e.target.value))}
+              value={form.agreedPrice || ''}
+              onChange={(e) => set('agreedPrice', Number(e.target.value))}
             />
+          </Field>
+          <Field label="Currency">
+            <select
+              className={inputCls}
+              value={form.currency}
+              onChange={(e) => set('currency', e.target.value as MoneyCurrency)}
+            >
+              {MONEY_CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </Field>
         </div>
         {selectedProduct && (
           <div className="text-xs text-slate-500">
-            Catalog sell price: {fmtEGP(selectedProduct.sellPriceEGP)}
+            Catalog sell price: {fmtMoney(selectedProduct.sellPrice, selectedProduct.sellCurrency)}
           </div>
         )}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Deposit received (EGP)">
+          <Field label={`Deposit received (${form.currency})`}>
             <input
               className={inputCls}
               type="number"
               inputMode="decimal"
               min={0}
-              value={form.depositEGP || ''}
-              onChange={(e) => set('depositEGP', Number(e.target.value))}
+              value={form.deposit || ''}
+              onChange={(e) => set('deposit', Number(e.target.value))}
             />
           </Field>
           <Field label="Payment method">
@@ -281,9 +299,9 @@ function OrderForm({
             </select>
           </Field>
         </div>
-        {form.agreedPriceEGP > 0 && (
-          <button className="text-xs text-sky-400" onClick={() => set('depositEGP', halfDeposit)}>
-            Set 50% deposit → {fmtEGP(halfDeposit)}
+        {form.agreedPrice > 0 && (
+          <button className="text-xs text-sky-400" onClick={() => set('deposit', halfDeposit)}>
+            Set 50% deposit → {fmtMoney(halfDeposit, form.currency)}
           </button>
         )}
         <div className="grid grid-cols-2 gap-3">

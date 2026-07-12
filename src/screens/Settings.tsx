@@ -95,8 +95,9 @@ export default function Settings() {
           </Field>
         </div>
         <p className="mt-2 text-[11px] text-slate-500">
-          The buffer inflates landed cost in all margin math to protect against EGP swings between
-          purchase and delivery.
+          The buffer is conservative in both directions: it inflates foreign costs and trims
+          foreign revenue in all margin math, protecting against EGP swings between purchase and
+          delivery.
         </p>
       </Card>
 

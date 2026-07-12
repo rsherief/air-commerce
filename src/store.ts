@@ -107,6 +107,40 @@ export const useStore = create<Store>()(
           settings: defaultSettings,
         }),
     }),
-    { name: 'air-commerce-v1' },
+    {
+      name: 'air-commerce-v1',
+      version: 1,
+      migrate: (persisted, version) => {
+        const s = persisted as Record<string, unknown>
+        if (version < 1) {
+          // v0 → v1: products/orders were Egypt-import only; trips had no direction.
+          type OldProduct = Product & { sellPriceEGP?: number }
+          type OldOrder = Order & { agreedPriceEGP?: number; depositEGP?: number }
+          s.products = ((s.products as OldProduct[]) ?? []).map((p) => ({
+            ...p,
+            direction: p.direction ?? 'to-egypt',
+            sellPrice: p.sellPrice ?? p.sellPriceEGP ?? 0,
+            sellCurrency: p.sellCurrency ?? 'EGP',
+          }))
+          s.trips = ((s.trips as Trip[]) ?? []).map((t) => ({
+            ...t,
+            direction: t.direction ?? 'round-trip',
+          }))
+          s.orders = ((s.orders as OldOrder[]) ?? []).map((o) => ({
+            ...o,
+            agreedPrice: o.agreedPrice ?? o.agreedPriceEGP ?? 0,
+            deposit: o.deposit ?? o.depositEGP ?? 0,
+            currency: o.currency ?? 'EGP',
+          }))
+          // Surface newly added seed products (e.g. Egyptian exports) to existing users.
+          const existing = new Set((s.products as Product[]).map((p) => p.id))
+          s.products = [
+            ...(s.products as Product[]),
+            ...seedProducts.filter((p) => !existing.has(p.id)),
+          ]
+        }
+        return s as unknown as Store
+      },
+    },
   ),
 )
