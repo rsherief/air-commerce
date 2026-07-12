@@ -12,7 +12,8 @@ import { MONEY_CURRENCIES, TRIP_DIRECTION_LABEL } from '../types'
 import { landedEGP, productMetrics, revenueEGP } from '../lib/margin'
 import { tripTotals } from '../lib/trip'
 import { fmtDate, fmtEGP, fmtKg, fmtMoney, fmtNum, uid } from '../lib/format'
-import { Button, Card, Chip, Empty, Fab, Field, Modal, ProgressBar, Stat, inputCls } from '../components/ui'
+import { flagFor } from '../lib/countries'
+import { Button, Card, Chip, CountrySelect, Empty, Fab, Field, Modal, ProgressBar, Stat, inputCls } from '../components/ui'
 
 const statusTone: Record<TripStatus, 'sky' | 'amber' | 'slate'> = {
   planning: 'sky',
@@ -65,7 +66,8 @@ function TripCard({ trip, onOpen }: { trip: Trip; onOpen: () => void }) {
     <Card onClick={onOpen}>
       <div className="flex items-center justify-between">
         <div className="text-sm font-semibold">
-          ✈️ Cairo {tripDirIcon[trip.direction]} {trip.destination}
+          ✈️ {flagFor(trip.origin)} {trip.origin} {tripDirIcon[trip.direction]}{' '}
+          {flagFor(trip.destination)} {trip.destination}
         </div>
         <Chip tone={statusTone[trip.status]}>{trip.status}</Chip>
       </div>
@@ -98,14 +100,14 @@ function TripDetail({ trip, onBack }: { trip: Trip; onBack: () => void }) {
   if (trip.direction !== 'return')
     legs.push({
       direction: 'from-egypt',
-      title: `🇪🇬 → Carry out — sell in ${trip.destination}`,
+      title: `${flagFor(trip.origin)} → ${flagFor(trip.destination)} Carry out — sell in ${trip.destination}`,
       weightKg: totals.weightOutKg,
       pct: outPct,
     })
   if (trip.direction !== 'outbound')
     legs.push({
       direction: 'to-egypt',
-      title: '→ 🇪🇬 Bring back — sell in Egypt',
+      title: `${flagFor(trip.destination)} → ${flagFor(trip.origin)} Bring back — sell in ${trip.origin}`,
       weightKg: totals.weightBackKg,
       pct: backPct,
     })
@@ -117,7 +119,8 @@ function TripDetail({ trip, onBack }: { trip: Trip; onBack: () => void }) {
       </button>
       <div className="mb-1 flex items-center justify-between">
         <h1 className="text-xl font-bold">
-          ✈️ Cairo {tripDirIcon[trip.direction]} {trip.destination}
+          ✈️ {flagFor(trip.origin)} {trip.origin} {tripDirIcon[trip.direction]}{' '}
+          {flagFor(trip.destination)} {trip.destination}
         </h1>
         <button onClick={() => upsertTrip({ ...trip, status: nextStatus[trip.status] })}>
           <Chip tone={statusTone[trip.status]}>{trip.status} ▸</Chip>
@@ -384,6 +387,7 @@ function TripForm({ open, trip, onClose }: { open: boolean; trip: Trip | null; o
   const today = new Date().toISOString().slice(0, 10)
   const blank: Trip = {
     id: '',
+    origin: 'Egypt',
     destination: '',
     direction: 'round-trip',
     startDate: today,
@@ -406,7 +410,7 @@ function TripForm({ open, trip, onClose }: { open: boolean; trip: Trip | null; o
   const set = <K extends keyof Trip>(k: K, v: Trip[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   const save = () => {
-    if (!form.destination.trim()) return
+    if (!form.origin.trim() || !form.destination.trim()) return
     upsertTrip({ ...form, id: form.id || uid() })
     onClose()
   }
@@ -414,14 +418,22 @@ function TripForm({ open, trip, onClose }: { open: boolean; trip: Trip | null; o
   return (
     <Modal open={open} onClose={onClose} title={trip ? 'Edit trip' : 'New trip'}>
       <div className="space-y-3">
-        <Field label="Destination (from Cairo)">
-          <input
-            className={inputCls}
-            placeholder="London, Dubai, Paris…"
-            value={form.destination}
-            onChange={(e) => set('destination', e.target.value)}
-          />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Origin">
+            <CountrySelect
+              key={loadedFor ?? 'closed'}
+              value={form.origin}
+              onChange={(v) => set('origin', v)}
+            />
+          </Field>
+          <Field label="Destination">
+            <CountrySelect
+              key={loadedFor ?? 'closed'}
+              value={form.destination}
+              onChange={(v) => set('destination', v)}
+            />
+          </Field>
+        </div>
         <Field label="Selling direction">
           <select
             className={inputCls}

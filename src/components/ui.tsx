@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { COUNTRIES } from '../lib/countries'
 
 export const inputCls =
   'w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500'
@@ -125,6 +127,57 @@ export function Field({ label, children }: { label: string; children: ReactNode 
       <span className="mb-1 block text-xs font-medium text-slate-400">{label}</span>
       {children}
     </label>
+  )
+}
+
+const OTHER = '__other__'
+
+export function CountrySelect({
+  value,
+  onChange,
+  placeholder = 'Select country…',
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+}) {
+  const [other, setOther] = useState(false)
+  const inList = COUNTRIES.some((c) => c.name === value)
+  const showInput = other || (value !== '' && !inList)
+  return (
+    <div className="space-y-1.5">
+      <select
+        className={inputCls}
+        value={showInput ? OTHER : value}
+        onChange={(e) => {
+          if (e.target.value === OTHER) {
+            setOther(true)
+            onChange('')
+          } else {
+            setOther(false)
+            onChange(e.target.value)
+          }
+        }}
+      >
+        <option value="" disabled>
+          {placeholder}
+        </option>
+        {COUNTRIES.map((c) => (
+          <option key={c.name} value={c.name}>
+            {c.flag} {c.name}
+          </option>
+        ))}
+        <option value={OTHER}>🌍 Other…</option>
+      </select>
+      {showInput && (
+        <input
+          className={inputCls}
+          placeholder="Type country or region…"
+          value={inList ? '' : value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </div>
   )
 }
 

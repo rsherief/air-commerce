@@ -3,6 +3,7 @@ import { useStore } from '../store'
 import type { MoneyCurrency, Order, OrderStatus, PaymentMethod } from '../types'
 import { MONEY_CURRENCIES, ORDER_STATUSES, PAYMENT_METHODS } from '../types'
 import { fmtMoney, uid } from '../lib/format'
+import { flagFor } from '../lib/countries'
 import { Button, Card, Chip, Empty, Fab, Field, Modal, inputCls } from '../components/ui'
 
 const statusTone: Record<OrderStatus, 'slate' | 'amber' | 'sky' | 'violet' | 'green'> = {
@@ -329,7 +330,7 @@ function OrderForm({
                 .filter((t) => t.status !== 'done')
                 .map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.destination}
+                    {flagFor(t.destination)} {t.destination}
                   </option>
                 ))}
             </select>

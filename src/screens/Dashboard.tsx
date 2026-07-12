@@ -5,6 +5,7 @@ import { fetchRates, rateAge } from '../lib/fx'
 import { effectiveRate } from '../lib/margin'
 import { tripTotals } from '../lib/trip'
 import { fmtEGP, fmtKg, fmtNum } from '../lib/format'
+import { flagFor } from '../lib/countries'
 import { orderBalance } from './Orders'
 import type { Tab } from '../components/TabBar'
 import { Card, Chip, Stat } from '../components/ui'
@@ -75,7 +76,10 @@ export default function Dashboard({ goTo }: { goTo: (t: Tab) => void }) {
       {activeTrip && activeTotals ? (
         <Card className="mb-3" onClick={() => goTo('trips')}>
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-semibold">✈️ Cairo ⇄ {activeTrip.destination}</span>
+            <span className="text-sm font-semibold">
+              ✈️ {flagFor(activeTrip.origin)} {activeTrip.origin} ⇄ {flagFor(activeTrip.destination)}{' '}
+              {activeTrip.destination}
+            </span>
             <Chip tone={activeTrip.status === 'shopping' ? 'amber' : 'sky'}>{activeTrip.status}</Chip>
           </div>
           <div className="grid grid-cols-4 gap-2 text-center text-xs">

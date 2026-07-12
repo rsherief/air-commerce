@@ -4,7 +4,8 @@ import type { Category, Direction, MoneyCurrency, Product } from '../types'
 import { CATEGORIES, DIRECTION_LABEL, MONEY_CURRENCIES } from '../types'
 import { productMetrics, suggestedSell } from '../lib/margin'
 import { fmtMoney, fmtNum, fmtPct, uid } from '../lib/format'
-import { Button, Card, Chip, Empty, Fab, Field, Modal, inputCls } from '../components/ui'
+import { CURRENCY_FLAG, flagFor } from '../lib/countries'
+import { Button, Card, Chip, CountrySelect, Empty, Fab, Field, Modal, inputCls } from '../components/ui'
 
 export function marginTone(pct: number): 'green' | 'amber' | 'red' {
   if (pct >= 40) return 'green'
@@ -12,7 +13,11 @@ export function marginTone(pct: number): 'green' | 'amber' | 'red' {
   return 'red'
 }
 
-export const directionBadge = (d: Direction) => (d === 'from-egypt' ? '🇪🇬 →' : '→ 🇪🇬')
+/** Goods flow: arrow leaves the origin flag and points into the market it sells in. */
+export const directionBadge = (p: Product) =>
+  p.direction === 'from-egypt'
+    ? `🇪🇬 → ${CURRENCY_FLAG[p.sellCurrency]}`
+    : `${flagFor(p.sourceRegion)} → 🇪🇬`
 
 export default function Catalog() {
   const products = useStore((s) => s.products)
@@ -94,7 +99,7 @@ export default function Catalog() {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold">
-                  <span className="mr-1 text-xs">{directionBadge(p.direction)}</span>
+                  <span className="mr-1 text-xs">{directionBadge(p)}</span>
                   {p.name}
                 </div>
                 <div className="text-xs text-slate-400">
@@ -208,7 +213,7 @@ function ProductForm({
                   form.direction === d ? 'bg-sky-600 text-white' : 'text-slate-400'
                 }`}
               >
-                {directionBadge(d)} {DIRECTION_LABEL[d]}
+                {d === 'from-egypt' ? '🇪🇬 →' : '→ 🇪🇬'} {DIRECTION_LABEL[d]}
               </button>
             ))}
           </div>
@@ -235,12 +240,11 @@ function ProductForm({
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label={form.direction === 'from-egypt' ? 'Buy in (Egypt)' : 'Source region'}>
-            <input
-              className={inputCls}
-              placeholder={form.direction === 'from-egypt' ? 'Egypt' : 'France, Dubai…'}
+          <Field label={form.direction === 'from-egypt' ? 'Buy in (Egypt)' : 'Source country'}>
+            <CountrySelect
+              key={loadedFor ?? 'closed'}
               value={form.sourceRegion}
-              onChange={(e) => set('sourceRegion', e.target.value)}
+              onChange={(v) => set('sourceRegion', v)}
             />
           </Field>
           <Field label="Store">

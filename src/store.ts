@@ -90,7 +90,8 @@ export const useStore = create<Store>()(
       importAll: (data) =>
         set({
           products: data.products ?? [],
-          trips: data.trips ?? [],
+          // older export files predate trip origins
+          trips: (data.trips ?? []).map((t) => ({ ...t, origin: t.origin ?? 'Egypt' })),
           tripItems: data.tripItems ?? [],
           customers: data.customers ?? [],
           orders: data.orders ?? [],
@@ -109,7 +110,7 @@ export const useStore = create<Store>()(
     }),
     {
       name: 'air-commerce-v1',
-      version: 1,
+      version: 2,
       migrate: (persisted, version) => {
         const s = persisted as Record<string, unknown>
         if (version < 1) {
@@ -138,6 +139,13 @@ export const useStore = create<Store>()(
             ...(s.products as Product[]),
             ...seedProducts.filter((p) => !existing.has(p.id)),
           ]
+        }
+        if (version < 2) {
+          // v1 → v2: trips gained an origin (previously always Cairo/Egypt).
+          s.trips = ((s.trips as Trip[]) ?? []).map((t) => ({
+            ...t,
+            origin: t.origin ?? 'Egypt',
+          }))
         }
         return s as unknown as Store
       },

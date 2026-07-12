@@ -66,6 +66,7 @@ export const TRIP_DIRECTION_LABEL: Record<TripDirection, string> = {
 
 export interface Trip {
   id: string
+  origin: string
   destination: string
   direction: TripDirection
   startDate: string
