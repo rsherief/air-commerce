@@ -1,1 +1,0 @@
-if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/air-commerce/sw.js', { scope: '/air-commerce/' })})}

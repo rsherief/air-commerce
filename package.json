@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "deploy": "DEPLOY_BASE=/air-commerce/ npm run build && cd dist && git add -A && git commit -m deploy && git push"
+    "deploy": "DEPLOY_BASE=/air-commerce/ npm run build && cd dist && git add -A && git commit -m deploy && git push origin main:gh-pages"
   },
   "dependencies": {
     "react": "^18.3.1",
