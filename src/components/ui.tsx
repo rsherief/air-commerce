@@ -164,7 +164,7 @@ export function CountrySelect({
         </option>
         {COUNTRIES.map((c) => (
           <option key={c.name} value={c.name}>
-            {c.flag} {c.name}
+            {c.flag} {c.name} | {c.airports.join(', ')}
           </option>
         ))}
         <option value={OTHER}>🌍 Other…</option>
