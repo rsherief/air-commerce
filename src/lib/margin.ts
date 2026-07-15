@@ -1,4 +1,4 @@
-import type { FxState, MoneyCurrency, Product, Settings } from '../types'
+import type { Direction, FxState, MoneyCurrency, Product, Settings } from '../types'
 
 /**
  * EGP per unit of `currency`, honoring manual overrides and the FX safety buffer.
@@ -48,16 +48,23 @@ export function productMetrics(product: Product, fx: FxState, settings: Settings
   return { landed, revenue, profit, marginPct, profitPerKg }
 }
 
-/** Suggested sell price in `sellCurrency` that yields the default markup over landed cost. */
+/**
+ * Suggested sell price in `sellCurrency` that yields the default markup over landed cost.
+ * Uses the lower Egypt-market markup when selling into Egypt (direction 'to-egypt'), and the
+ * abroad markup otherwise — a single flat markup regardless of destination can price goods out
+ * of reach for local purchasing power in Egypt.
+ */
 export function suggestedSell(
   buyPrice: number,
   buyCurrency: MoneyCurrency,
   sellCurrency: MoneyCurrency,
+  direction: Direction,
   fx: FxState,
   settings: Settings,
 ): number {
   const landed = buyPrice * effectiveRate(buyCurrency, fx, settings, 'cost')
-  const target = landed * (1 + settings.defaultMarkupPct / 100)
+  const markupPct = direction === 'to-egypt' ? settings.defaultMarkupPctEgypt : settings.defaultMarkupPct
+  const target = landed * (1 + markupPct / 100)
   const inSellCurrency = target / effectiveRate(sellCurrency, fx, settings, 'revenue')
   return sellCurrency === 'EGP'
     ? Math.round(inSellCurrency / 50) * 50

@@ -19,6 +19,14 @@ export const directionBadge = (p: Product) =>
     ? `🇪🇬 → ${CURRENCY_FLAG[p.sellCurrency]}`
     : `${flagFor(p.sourceRegion)} → 🇪🇬`
 
+type SortKey = 'margin' | 'profitPerKg' | 'profit'
+
+const SORT_LABEL: Record<SortKey, string> = {
+  margin: 'Margin %',
+  profitPerKg: 'Profit/kg',
+  profit: 'Total profit',
+}
+
 export default function Catalog() {
   const products = useStore((s) => s.products)
   const fx = useStore((s) => s.fx)
@@ -26,6 +34,7 @@ export default function Catalog() {
   const [search, setSearch] = useState('')
   const [direction, setDirection] = useState<Direction | 'all'>('all')
   const [category, setCategory] = useState<Category | 'all'>('all')
+  const [sort, setSort] = useState<SortKey>('margin')
   const [editing, setEditing] = useState<Product | null>(null)
   const [creating, setCreating] = useState(false)
 
@@ -43,15 +52,29 @@ export default function Catalog() {
           p.sourceStore.toLowerCase().includes(q),
       )
       .map((p) => ({ p, m: productMetrics(p, fx, settings) }))
-      .sort((a, b) => b.m.profitPerKg - a.m.profitPerKg)
-  }, [products, direction, category, search, fx, settings])
+      .sort((a, b) => b.m[sort === 'margin' ? 'marginPct' : sort] - a.m[sort === 'margin' ? 'marginPct' : sort])
+  }, [products, direction, category, search, sort, fx, settings])
 
   return (
     <div>
       <h1 className="mb-1 text-xl font-bold">Catalog</h1>
-      <p className="mb-3 text-xs text-slate-500">
-        Sorted by profit per kg. Seeded prices are estimates — tap a product to set real prices.
+      <p className="mb-2 text-xs text-slate-500">
+        Sorted by {SORT_LABEL[sort].toLowerCase()}, highest first. Seeded prices are estimates —
+        tap a product to set real prices.
       </p>
+      <div className="mb-3 flex rounded-lg bg-slate-800 p-0.5 text-xs font-medium">
+        {(Object.keys(SORT_LABEL) as SortKey[]).map((key) => (
+          <button
+            key={key}
+            onClick={() => setSort(key)}
+            className={`flex-1 rounded-md py-1.5 ${
+              sort === key ? 'bg-sky-600 text-white' : 'text-slate-400'
+            }`}
+          >
+            {SORT_LABEL[key]}
+          </button>
+        ))}
+      </div>
       <input
         className={`${inputCls} mb-2`}
         placeholder="Search product, brand, store…"
@@ -194,9 +217,11 @@ function ProductForm({
     onClose()
   }
 
+  const markupPct =
+    form.direction === 'to-egypt' ? settings.defaultMarkupPctEgypt : settings.defaultMarkupPct
   const suggestion =
     form.buyPrice > 0
-      ? suggestedSell(form.buyPrice, form.buyCurrency, form.sellCurrency, fx, settings)
+      ? suggestedSell(form.buyPrice, form.buyCurrency, form.sellCurrency, form.direction, fx, settings)
       : 0
 
   return (
@@ -308,8 +333,7 @@ function ProductForm({
         </div>
         {suggestion > 0 && (
           <button className="text-xs text-sky-400" onClick={() => set('sellPrice', suggestion)}>
-            Suggest sell price at +{settings.defaultMarkupPct}% markup →{' '}
-            {fmtMoney(suggestion, form.sellCurrency)}
+            Suggest sell price at +{markupPct}% markup → {fmtMoney(suggestion, form.sellCurrency)}
           </button>
         )}
         <Field label="Weight (grams)">

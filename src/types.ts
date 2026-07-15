@@ -129,6 +129,9 @@ export interface FxState {
 
 export interface Settings {
   fxBufferPct: number
+  /** Default markup for goods sold abroad (higher purchasing power markets). */
   defaultMarkupPct: number
+  /** Default markup for goods sold in Egypt — kept lower to reflect local purchasing power. */
+  defaultMarkupPctEgypt: number
   manualRates: Partial<Record<Currency, number>>
 }

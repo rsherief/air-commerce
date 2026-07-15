@@ -40,6 +40,9 @@ interface Store extends ExportData {
 const defaultSettings: Settings = {
   fxBufferPct: 5,
   defaultMarkupPct: 45,
+  // Lower than the abroad markup: Egypt has less local purchasing power, so the same
+  // percentage markup that works selling into UK/France/US prices goods out of reach here.
+  defaultMarkupPctEgypt: 25,
   manualRates: {},
 }
 
@@ -110,7 +113,7 @@ export const useStore = create<Store>()(
     }),
     {
       name: 'air-commerce-v1',
-      version: 2,
+      version: 3,
       migrate: (persisted, version) => {
         const s = persisted as Record<string, unknown>
         if (version < 1) {
@@ -146,6 +149,10 @@ export const useStore = create<Store>()(
             ...t,
             origin: t.origin ?? 'Egypt',
           }))
+        }
+        if (version < 3) {
+          // v2 → v3: markup split into abroad vs. Egypt-market defaults.
+          s.settings = { ...defaultSettings, ...(s.settings as Partial<Settings>) }
         }
         return s as unknown as Store
       },

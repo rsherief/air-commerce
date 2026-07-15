@@ -83,7 +83,8 @@ export default function Settings() {
               onChange={(e) => updateSettings({ fxBufferPct: Number(e.target.value) })}
             />
           </Field>
-          <Field label="Default markup (%)">
+          <div />
+          <Field label="Markup — sell abroad (%)">
             <input
               className={inputCls}
               type="number"
@@ -93,11 +94,27 @@ export default function Settings() {
               onChange={(e) => updateSettings({ defaultMarkupPct: Number(e.target.value) })}
             />
           </Field>
+          <Field label="Markup — sell in Egypt (%)">
+            <input
+              className={inputCls}
+              type="number"
+              inputMode="decimal"
+              min={0}
+              value={settings.defaultMarkupPctEgypt}
+              onChange={(e) => updateSettings({ defaultMarkupPctEgypt: Number(e.target.value) })}
+            />
+          </Field>
         </div>
         <p className="mt-2 text-[11px] text-slate-500">
           The buffer is conservative in both directions: it inflates foreign costs and trims
           foreign revenue in all margin math, protecting against EGP swings between purchase and
           delivery.
+        </p>
+        <p className="mt-2 text-[11px] text-slate-500">
+          The Egypt markup is kept lower than the abroad markup — the same percentage that works
+          in UK/France/US markets can price goods out of reach for local purchasing power here.
+          Tune this based on what buyers in Egypt actually pay; it's a starting assumption, not a
+          measured rate.
         </p>
       </Card>
 
